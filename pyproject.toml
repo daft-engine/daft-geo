@@ -10,6 +10,7 @@ dependencies = ["daft"]
 
 [project.optional-dependencies]
 test = ["pytest", "pytest-xdist"]
+bench = ["numpy"]
 
 [tool.setuptools_scm]
 local_scheme = "no-local-version"

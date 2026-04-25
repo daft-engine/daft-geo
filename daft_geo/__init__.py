@@ -9,16 +9,16 @@ if TYPE_CHECKING:
     from daft.expressions import Expression
 
 # ---------------------------------------------------------------------------
-# Types
+# Types (GeoArrow-standard extension names)
 # ---------------------------------------------------------------------------
 
 Point2D = DataType.extension(
-    "daft_geo.point2d",
+    "geoarrow.point",
     DataType.fixed_size_list(DataType.float64(), 2),
 )
 
 Point3D = DataType.extension(
-    "daft_geo.point3d",
+    "geoarrow.point",
     DataType.fixed_size_list(DataType.float64(), 3),
 )
 
@@ -28,12 +28,12 @@ Point3D = DataType.extension(
 
 
 def point2d(x: Expression, y: Expression) -> Expression:
-    """Construct a Point2D from x and y coordinates."""
+    """Construct a 2D point from x and y coordinates."""
     return daft.get_function("geo_point2d", x, y)
 
 
 def point3d(x: Expression, y: Expression, z: Expression) -> Expression:
-    """Construct a Point3D from x, y, and z coordinates."""
+    """Construct a 3D point from x, y, and z coordinates."""
     return daft.get_function("geo_point3d", x, y, z)
 
 
@@ -43,7 +43,7 @@ def distance(p1: Expression, p2: Expression) -> Expression:
 
 
 def haversine(p1: Expression, p2: Expression) -> Expression:
-    """Compute great-circle distance in meters between two Point2D values (lat, lon in degrees)."""
+    """Compute great-circle distance in meters between two 2D points (lat, lon in degrees)."""
     return daft.get_function("geo_haversine", p1, p2)
 
 

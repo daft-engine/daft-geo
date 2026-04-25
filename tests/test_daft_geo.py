@@ -28,7 +28,7 @@ def test_point2d(sess):
         result = df.select(point2d(col("lat"), col("lon"))).collect()
 
     schema = result.schema()
-    assert "geo_point2d" in str(schema)
+    assert "geoarrow.point" in str(schema)
 
 
 def test_point2d_null_propagation(sess):

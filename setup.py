@@ -11,6 +11,7 @@ setup(
             path="Cargo.toml",
             binding=Binding.NoBinding,
             strip=True,
+            debug=False,
         )
     ],
 )

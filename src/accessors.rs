@@ -1,49 +1,47 @@
 use std::{ffi::CStr, sync::Arc};
 
 use arrow::{
-    array::{
-        Array, ArrayRef, BooleanBufferBuilder, Float64Array, cast::AsArray, types::Float64Type,
-    },
+    array::{ArrayRef, BooleanBufferBuilder, Float64Array},
     buffer::NullBuffer,
     datatypes::{DataType, Field},
 };
 use daft_ext::prelude::*;
+use geo_traits::{CoordTrait, PointTrait};
+use geoarrow_array::{GeoArrowArray, GeoArrowArrayAccessor};
 
-use crate::types::{from_array, is_point, to_array};
+use crate::types::{GeoArrowFfi, GeoPointArray, export_arrow};
 
-fn extract_component(args: Vec<ArrowData>, index: usize, fn_name: &str) -> DaftResult<ArrowData> {
+fn extract_component(
+    args: Vec<ArrowData>,
+    index: usize,
+    fn_name: &str,
+) -> DaftResult<ArrowData> {
     if args.len() != 1 {
         return Err(DaftError::RuntimeError(format!(
             "{fn_name}: expected 1 argument, got {}",
             args.len()
         )));
     }
-    let (_, array) = to_array(args.into_iter().next().unwrap())?;
-    let fsl = array
-        .as_fixed_size_list_opt()
-        .ok_or_else(|| DaftError::TypeError(format!("{fn_name}: expected FixedSizeList input")))?;
-
-    let dims = fsl.value_length() as usize;
-    if index >= dims {
-        return Err(DaftError::RuntimeError(format!(
-            "{fn_name}: index {index} out of bounds for {dims}D point"
-        )));
-    }
-
-    let inner_values = fsl.values().as_primitive::<Float64Type>();
-    let len = fsl.len();
+    let pts = GeoPointArray::from_ffi(args.into_iter().next().unwrap())?;
+    let len = pts.len();
     let mut values = Vec::with_capacity(len);
     let mut null_count = 0;
     let mut validity = BooleanBufferBuilder::new(len);
 
     for row in 0..len {
-        if fsl.is_null(row) {
-            values.push(0.0);
-            validity.append(false);
-            null_count += 1;
-        } else {
-            values.push(inner_values.value(row * dims + index));
-            validity.append(true);
+        match pts.get(row).map_err(|e| DaftError::RuntimeError(e.to_string()))? {
+            Some(pt) => {
+                let coord = pt.coord().ok_or_else(|| {
+                    DaftError::RuntimeError(format!("{fn_name}: empty point at row {row}"))
+                })?;
+                values.push(coord.nth_or_panic(index));
+                validity.append(true);
+            }
+            None => {
+                values.push(0.0);
+                validity.append(false);
+                null_count += 1;
+            }
         }
     }
 
@@ -55,7 +53,7 @@ fn extract_component(args: Vec<ArrowData>, index: usize, fn_name: &str) -> DaftR
     };
 
     let out_field = Field::new(fn_name, DataType::Float64, null_count > 0);
-    from_array(&out_field, result)
+    export_arrow(&out_field, result)
 }
 
 pub struct GeoX;
@@ -72,9 +70,9 @@ impl DaftScalarFunction for GeoX {
                 args.len()
             )));
         }
-        if !is_point(&args[0]) {
+        if !GeoPointArray::matches_schema(&args[0]) {
             return Err(DaftError::TypeError(
-                "geo_x: argument must be a Point2D or Point3D".into(),
+                "geo_x: argument must be a geoarrow.point".into(),
             ));
         }
         let out = Field::new("geo_x", DataType::Float64, true);
@@ -100,9 +98,9 @@ impl DaftScalarFunction for GeoY {
                 args.len()
             )));
         }
-        if !is_point(&args[0]) {
+        if !GeoPointArray::matches_schema(&args[0]) {
             return Err(DaftError::TypeError(
-                "geo_y: argument must be a Point2D or Point3D".into(),
+                "geo_y: argument must be a geoarrow.point".into(),
             ));
         }
         let out = Field::new("geo_y", DataType::Float64, true);
