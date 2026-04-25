@@ -1,9 +1,6 @@
 name: Publish Package
 
 on:
-  push:
-    tags:
-      - v*
   release:
     types: [published]
   workflow_dispatch:
@@ -160,7 +157,7 @@ jobs:
           skip-existing: true
 
       - name: Publish to PyPI
-        if: github.event_name == 'push' || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && !inputs.test-pypi)
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && !inputs.test-pypi)
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           skip-existing: true
