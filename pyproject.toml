@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools", "setuptools-rust"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "daft-geo"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["daft"]
+
+[project.optional-dependencies]
+test = ["pytest"]
