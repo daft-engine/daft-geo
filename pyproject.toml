@@ -1,12 +1,24 @@
 [build-system]
-requires = ["setuptools", "setuptools-rust"]
+requires = ["setuptools>=64", "setuptools-rust", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "daft-geo"
-version = "0.1.0"
+dynamic = ["version"]
 requires-python = ">=3.10"
 dependencies = ["daft"]
 
 [project.optional-dependencies]
-test = ["pytest"]
+test = ["pytest", "pytest-xdist"]
+
+[tool.setuptools_scm]
+local_scheme = "no-local-version"
+fallback_version = "0.0.0"
+
+[[tool.cibuildwheel.overrides]]
+select = "*-macosx_x86_64"
+environment = { MACOSX_DEPLOYMENT_TARGET = "10.13" }
+
+[[tool.cibuildwheel.overrides]]
+select = "*-macosx_arm64"
+environment = { MACOSX_DEPLOYMENT_TARGET = "11.0" }
