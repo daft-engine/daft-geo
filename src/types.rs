@@ -9,34 +9,26 @@ use daft_ext::prelude::{ArrowData, ArrowSchema, DaftError, DaftResult};
 use geoarrow_array::{IntoArrow, array::PointArray};
 use geoarrow_schema::{CoordType, Dimension, Metadata, PointType};
 
-pub trait GeoArrowFfi: Sized {
-    fn from_ffi(data: ArrowData) -> DaftResult<Self>;
-    fn into_ffi(self, name: &str) -> DaftResult<ArrowData>;
-    fn matches_schema(schema: &ArrowSchema) -> bool;
-}
-
 pub struct GeoPointArray(pub PointArray);
 
-impl GeoArrowFfi for GeoPointArray {
-    fn from_ffi(data: ArrowData) -> DaftResult<Self> {
+impl TryFrom<ArrowData> for GeoPointArray {
+    type Error = DaftError;
+
+    fn try_from(data: ArrowData) -> Result<Self, DaftError> {
         let (field, array) = import_arrow(data)?;
         let dim = Self::dimension_of_field(&field)?;
         let pa = PointArray::try_from((array.as_ref(), Self::geo_type(dim)))
             .map_err(|e| DaftError::RuntimeError(e.to_string()))?;
         Ok(Self(pa))
     }
+}
 
-    fn into_ffi(self, name: &str) -> DaftResult<ArrowData> {
+impl GeoPointArray {
+    pub fn into_ffi(self, name: &str) -> DaftResult<ArrowData> {
         let field = self.0.extension_type().to_field(name, true);
         export_arrow(&field, self.0.into_arrow())
     }
 
-    fn matches_schema(schema: &ArrowSchema) -> bool {
-        Self::dimension_of_schema(schema).is_ok()
-    }
-}
-
-impl GeoPointArray {
     pub fn from_fixed_size_list(fsl: FixedSizeListArray, dim: Dimension) -> DaftResult<Self> {
         let arr: ArrayRef = Arc::new(fsl);
         let pa = PointArray::try_from((arr.as_ref(), Self::geo_type(dim)))
@@ -109,4 +101,104 @@ pub fn export_arrow(field: &Field, array: ArrayRef) -> DaftResult<ArrowData> {
         schema,
         array: ffi_array.into(),
     })
+}
+
+pub struct PointFieldArg {
+    pub field: Field,
+}
+
+impl<'a> TryFrom<&'a [ArrowSchema]> for PointFieldArg {
+    type Error = DaftError;
+
+    fn try_from(args: &'a [ArrowSchema]) -> Result<Self, DaftError> {
+        if args.len() != 1 {
+            return Err(DaftError::TypeError(format!(
+                "expected 1 argument, got {}",
+                args.len()
+            )));
+        }
+        GeoPointArray::dimension_of_schema(&args[0])?;
+        let field = Field::try_from(&args[0]).map_err(|e| DaftError::TypeError(e.to_string()))?;
+        Ok(Self { field })
+    }
+}
+
+pub struct PointPairFieldArg {
+    pub first: Field,
+    pub first_dim: Dimension,
+    pub second_dim: Dimension,
+}
+
+impl<'a> TryFrom<&'a [ArrowSchema]> for PointPairFieldArg {
+    type Error = DaftError;
+
+    fn try_from(args: &'a [ArrowSchema]) -> Result<Self, DaftError> {
+        if args.len() != 2 {
+            return Err(DaftError::TypeError(format!(
+                "expected 2 arguments, got {}",
+                args.len()
+            )));
+        }
+        let first_dim = GeoPointArray::dimension_of_schema(&args[0])?;
+        let second_dim = GeoPointArray::dimension_of_schema(&args[1])?;
+        let first = Field::try_from(&args[0]).map_err(|e| DaftError::TypeError(e.to_string()))?;
+        Ok(Self {
+            first,
+            first_dim,
+            second_dim,
+        })
+    }
+}
+
+pub struct PointArg {
+    pub name: String,
+    pub points: GeoPointArray,
+}
+
+impl TryFrom<Vec<ArrowData>> for PointArg {
+    type Error = DaftError;
+
+    fn try_from(args: Vec<ArrowData>) -> Result<Self, DaftError> {
+        if args.len() != 1 {
+            return Err(DaftError::RuntimeError(format!(
+                "expected 1 argument, got {}",
+                args.len()
+            )));
+        }
+        let data = args.into_iter().next().unwrap();
+        let name = Field::try_from(&data.schema)
+            .map_err(|e| DaftError::RuntimeError(e.to_string()))?
+            .name()
+            .clone();
+        let points = GeoPointArray::try_from(data)?;
+        Ok(Self { name, points })
+    }
+}
+
+pub struct PointPairArg {
+    pub name: String,
+    pub a: GeoPointArray,
+    pub b: GeoPointArray,
+}
+
+impl TryFrom<Vec<ArrowData>> for PointPairArg {
+    type Error = DaftError;
+
+    fn try_from(args: Vec<ArrowData>) -> Result<Self, DaftError> {
+        if args.len() != 2 {
+            return Err(DaftError::RuntimeError(format!(
+                "expected 2 arguments, got {}",
+                args.len()
+            )));
+        }
+        let mut iter = args.into_iter();
+        let first = iter.next().unwrap();
+        let name = Field::try_from(&first.schema)
+            .map_err(|e| DaftError::RuntimeError(e.to_string()))?
+            .name()
+            .clone();
+        let a = GeoPointArray::try_from(first)?;
+        let b = GeoPointArray::try_from(iter.next().unwrap())?;
+        Ok(Self { name, a, b })
+    }
 }

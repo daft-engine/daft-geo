@@ -8,8 +8,9 @@ use arrow::{
 use daft_ext::prelude::*;
 use geo_traits::{CoordTrait, PointTrait};
 use geoarrow_array::{GeoArrowArray, GeoArrowArrayAccessor};
+use geoarrow_schema::Dimension;
 
-use crate::types::{GeoArrowFfi, GeoPointArray, export_arrow};
+use crate::types::{PointPairArg, PointPairFieldArg, export_arrow};
 
 const EARTH_RADIUS_M: f64 = 6_371_000.0;
 
@@ -21,44 +22,19 @@ impl DaftScalarFunction for GeoDistance {
     }
 
     fn return_field(&self, args: &[ArrowSchema]) -> DaftResult<ArrowSchema> {
-        if args.len() != 2 {
+        let args = PointPairFieldArg::try_from(args)?;
+        if args.first_dim != args.second_dim {
             return Err(DaftError::TypeError(format!(
-                "geo_distance: expected 2 arguments, got {}",
-                args.len()
+                "geo_distance: dimension mismatch: {:?} vs {:?}",
+                args.first_dim, args.second_dim
             )));
         }
-        if !GeoPointArray::matches_schema(&args[0]) || !GeoPointArray::matches_schema(&args[1]) {
-            return Err(DaftError::TypeError(
-                "geo_distance: both arguments must be geoarrow.point".into(),
-            ));
-        }
-        let d0 = GeoPointArray::dimension_of_schema(&args[0])?;
-        let d1 = GeoPointArray::dimension_of_schema(&args[1])?;
-        if d0 != d1 {
-            return Err(DaftError::TypeError(format!(
-                "geo_distance: dimension mismatch: {d0:?} vs {d1:?}"
-            )));
-        }
-        let input = Field::try_from(&args[0]).map_err(|e| DaftError::TypeError(e.to_string()))?;
-        let out = Field::new(input.name(), DataType::Float64, true);
+        let out = Field::new(args.first.name(), DataType::Float64, true);
         ArrowSchema::try_from(&out).map_err(|e| DaftError::TypeError(e.to_string()))
     }
 
     fn call(&self, args: Vec<ArrowData>) -> DaftResult<ArrowData> {
-        if args.len() != 2 {
-            return Err(DaftError::RuntimeError(format!(
-                "geo_distance: expected 2 arguments, got {}",
-                args.len()
-            )));
-        }
-        let mut iter = args.into_iter();
-        let first = iter.next().unwrap();
-        let output_name = Field::try_from(&first.schema)
-            .map_err(|e| DaftError::RuntimeError(e.to_string()))?
-            .name()
-            .clone();
-        let a = GeoPointArray::from_ffi(first)?;
-        let b = GeoPointArray::from_ffi(iter.next().unwrap())?;
+        let PointPairArg { name, a, b } = args.try_into()?;
 
         let len = a.len();
         let mut results = Vec::with_capacity(len);
@@ -66,8 +42,12 @@ impl DaftScalarFunction for GeoDistance {
         let mut validity = BooleanBufferBuilder::new(len);
 
         for row in 0..len {
-            let pa = a.get(row).map_err(|e| DaftError::RuntimeError(e.to_string()))?;
-            let pb = b.get(row).map_err(|e| DaftError::RuntimeError(e.to_string()))?;
+            let pa = a
+                .get(row)
+                .map_err(|e| DaftError::RuntimeError(e.to_string()))?;
+            let pb = b
+                .get(row)
+                .map_err(|e| DaftError::RuntimeError(e.to_string()))?;
             match (pa.and_then(|p| p.coord()), pb.and_then(|p| p.coord())) {
                 (Some(ca), Some(cb)) => {
                     let dims = ca.dim().size();
@@ -92,7 +72,7 @@ impl DaftScalarFunction for GeoDistance {
             Arc::new(Float64Array::from(results))
         };
 
-        let out_field = Field::new(&output_name, DataType::Float64, null_count > 0);
+        let out_field = Field::new(&name, DataType::Float64, null_count > 0);
         export_arrow(&out_field, result)
     }
 }
@@ -105,45 +85,18 @@ impl DaftScalarFunction for GeoHaversine {
     }
 
     fn return_field(&self, args: &[ArrowSchema]) -> DaftResult<ArrowSchema> {
-        if args.len() != 2 {
-            return Err(DaftError::TypeError(format!(
-                "geo_haversine: expected 2 arguments, got {}",
-                args.len()
-            )));
+        let args = PointPairFieldArg::try_from(args)?;
+        if args.first_dim != Dimension::XY || args.second_dim != Dimension::XY {
+            return Err(DaftError::TypeError(
+                "geo_haversine: arguments must be 2D points (lat, lon)".into(),
+            ));
         }
-        for (i, arg) in args.iter().enumerate() {
-            if !GeoPointArray::matches_schema(arg) {
-                return Err(DaftError::TypeError(format!(
-                    "geo_haversine: argument {i} must be a geoarrow.point"
-                )));
-            }
-            let dim = GeoPointArray::dimension_of_schema(arg)?;
-            if dim != geoarrow_schema::Dimension::XY {
-                return Err(DaftError::TypeError(
-                    "geo_haversine: arguments must be 2D points (lat, lon)".into(),
-                ));
-            }
-        }
-        let input = Field::try_from(&args[0]).map_err(|e| DaftError::TypeError(e.to_string()))?;
-        let out = Field::new(input.name(), DataType::Float64, true);
+        let out = Field::new(args.first.name(), DataType::Float64, true);
         ArrowSchema::try_from(&out).map_err(|e| DaftError::TypeError(e.to_string()))
     }
 
     fn call(&self, args: Vec<ArrowData>) -> DaftResult<ArrowData> {
-        if args.len() != 2 {
-            return Err(DaftError::RuntimeError(format!(
-                "geo_haversine: expected 2 arguments, got {}",
-                args.len()
-            )));
-        }
-        let mut iter = args.into_iter();
-        let first = iter.next().unwrap();
-        let output_name = Field::try_from(&first.schema)
-            .map_err(|e| DaftError::RuntimeError(e.to_string()))?
-            .name()
-            .clone();
-        let a = GeoPointArray::from_ffi(first)?;
-        let b = GeoPointArray::from_ffi(iter.next().unwrap())?;
+        let PointPairArg { name, a, b } = args.try_into()?;
 
         let len = a.len();
         let mut results = Vec::with_capacity(len);
@@ -151,8 +104,12 @@ impl DaftScalarFunction for GeoHaversine {
         let mut validity = BooleanBufferBuilder::new(len);
 
         for row in 0..len {
-            let pa = a.get(row).map_err(|e| DaftError::RuntimeError(e.to_string()))?;
-            let pb = b.get(row).map_err(|e| DaftError::RuntimeError(e.to_string()))?;
+            let pa = a
+                .get(row)
+                .map_err(|e| DaftError::RuntimeError(e.to_string()))?;
+            let pb = b
+                .get(row)
+                .map_err(|e| DaftError::RuntimeError(e.to_string()))?;
             match (pa.and_then(|p| p.coord()), pb.and_then(|p| p.coord())) {
                 (Some(ca), Some(cb)) => {
                     let (lat1, lon1) = (ca.x(), ca.y());
@@ -184,7 +141,7 @@ impl DaftScalarFunction for GeoHaversine {
             Arc::new(Float64Array::from(results))
         };
 
-        let out_field = Field::new(&output_name, DataType::Float64, null_count > 0);
+        let out_field = Field::new(&name, DataType::Float64, null_count > 0);
         export_arrow(&out_field, result)
     }
 }

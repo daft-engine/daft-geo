@@ -12,7 +12,7 @@ use arrow::{
 use daft_ext::prelude::*;
 use geoarrow_schema::Dimension;
 
-use crate::types::{GeoArrowFfi, GeoPointArray, import_arrow};
+use crate::types::{GeoPointArray, import_arrow};
 
 fn validate_numeric(field: &Field, arg_name: &str) -> DaftResult<()> {
     match field.data_type() {
@@ -33,11 +33,14 @@ fn validate_numeric(field: &Field, arg_name: &str) -> DaftResult<()> {
     }
 }
 
-fn cast_to_f64(array: &ArrayRef) -> DaftResult<ArrayRef> {
+fn cast_to_f64(array: &ArrayRef) -> DaftResult<Float64Array> {
     if *array.data_type() == DataType::Float64 {
-        return Ok(array.clone());
+        return Ok(array.clone().as_primitive().clone());
     }
-    cast(array, &DataType::Float64).map_err(|e| DaftError::RuntimeError(e.to_string()))
+    Ok(cast(array, &DataType::Float64)
+        .map_err(|e| DaftError::RuntimeError(e.to_string()))?
+        .as_primitive::<Float64Type>()
+        .clone())
 }
 
 fn build_point_array(
@@ -47,14 +50,10 @@ fn build_point_array(
 ) -> DaftResult<ArrowData> {
     let len = arrays[0].len();
     let dims = dim.size() as i32;
-    let float_arrays: Vec<ArrayRef> = arrays
+    let f64_arrays: Vec<Float64Array> = arrays
         .iter()
-        .map(|a| cast_to_f64(a))
+        .map(cast_to_f64)
         .collect::<DaftResult<Vec<_>>>()?;
-    let f64_arrays: Vec<&Float64Array> = float_arrays
-        .iter()
-        .map(|a| a.as_primitive::<Float64Type>())
-        .collect();
 
     let mut values = Vec::with_capacity(len * dims as usize);
     let mut null_count = 0;
