@@ -39,7 +39,8 @@ impl DaftScalarFunction for GeoDistance {
                 "geo_distance: dimension mismatch: {d0:?} vs {d1:?}"
             )));
         }
-        let out = Field::new("geo_distance", DataType::Float64, true);
+        let input = Field::try_from(&args[0]).map_err(|e| DaftError::TypeError(e.to_string()))?;
+        let out = Field::new(input.name(), DataType::Float64, true);
         ArrowSchema::try_from(&out).map_err(|e| DaftError::TypeError(e.to_string()))
     }
 
@@ -51,7 +52,12 @@ impl DaftScalarFunction for GeoDistance {
             )));
         }
         let mut iter = args.into_iter();
-        let a = GeoPointArray::from_ffi(iter.next().unwrap())?;
+        let first = iter.next().unwrap();
+        let output_name = Field::try_from(&first.schema)
+            .map_err(|e| DaftError::RuntimeError(e.to_string()))?
+            .name()
+            .clone();
+        let a = GeoPointArray::from_ffi(first)?;
         let b = GeoPointArray::from_ffi(iter.next().unwrap())?;
 
         let len = a.len();
@@ -86,7 +92,7 @@ impl DaftScalarFunction for GeoDistance {
             Arc::new(Float64Array::from(results))
         };
 
-        let out_field = Field::new("geo_distance", DataType::Float64, null_count > 0);
+        let out_field = Field::new(&output_name, DataType::Float64, null_count > 0);
         export_arrow(&out_field, result)
     }
 }
@@ -118,7 +124,8 @@ impl DaftScalarFunction for GeoHaversine {
                 ));
             }
         }
-        let out = Field::new("geo_haversine", DataType::Float64, true);
+        let input = Field::try_from(&args[0]).map_err(|e| DaftError::TypeError(e.to_string()))?;
+        let out = Field::new(input.name(), DataType::Float64, true);
         ArrowSchema::try_from(&out).map_err(|e| DaftError::TypeError(e.to_string()))
     }
 
@@ -130,7 +137,12 @@ impl DaftScalarFunction for GeoHaversine {
             )));
         }
         let mut iter = args.into_iter();
-        let a = GeoPointArray::from_ffi(iter.next().unwrap())?;
+        let first = iter.next().unwrap();
+        let output_name = Field::try_from(&first.schema)
+            .map_err(|e| DaftError::RuntimeError(e.to_string()))?
+            .name()
+            .clone();
+        let a = GeoPointArray::from_ffi(first)?;
         let b = GeoPointArray::from_ffi(iter.next().unwrap())?;
 
         let len = a.len();
@@ -172,7 +184,7 @@ impl DaftScalarFunction for GeoHaversine {
             Arc::new(Float64Array::from(results))
         };
 
-        let out_field = Field::new("geo_haversine", DataType::Float64, null_count > 0);
+        let out_field = Field::new(&output_name, DataType::Float64, null_count > 0);
         export_arrow(&out_field, result)
     }
 }

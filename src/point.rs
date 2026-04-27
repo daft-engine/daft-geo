@@ -47,7 +47,10 @@ fn build_point_array(
 ) -> DaftResult<ArrowData> {
     let len = arrays[0].len();
     let dims = dim.size() as i32;
-    let float_arrays: Vec<ArrayRef> = arrays.iter().map(|a| cast_to_f64(a)).collect::<DaftResult<Vec<_>>>()?;
+    let float_arrays: Vec<ArrayRef> = arrays
+        .iter()
+        .map(|a| cast_to_f64(a))
+        .collect::<DaftResult<Vec<_>>>()?;
     let f64_arrays: Vec<&Float64Array> = float_arrays
         .iter()
         .map(|a| a.as_primitive::<Float64Type>())
@@ -60,9 +63,7 @@ fn build_point_array(
     for row in 0..len {
         let any_null = f64_arrays.iter().any(|a| a.is_null(row));
         if any_null {
-            for _ in 0..dims {
-                values.push(0.0);
-            }
+            values.extend(std::iter::repeat_n(0.0, dims as usize));
             validity.append(false);
             null_count += 1;
         } else {
@@ -104,7 +105,7 @@ impl DaftScalarFunction for GeoPoint2D {
         let f1 = Field::try_from(&args[1]).map_err(|e| DaftError::TypeError(e.to_string()))?;
         validate_numeric(&f0, "x")?;
         validate_numeric(&f1, "y")?;
-        GeoPointArray::output_schema("geo_point2d", Dimension::XY)
+        GeoPointArray::output_schema(f0.name(), Dimension::XY)
     }
 
     fn call(&self, args: Vec<ArrowData>) -> DaftResult<ArrowData> {
@@ -114,12 +115,16 @@ impl DaftScalarFunction for GeoPoint2D {
                 args.len()
             )));
         }
+        let output_name = Field::try_from(&args[0].schema)
+            .map_err(|e| DaftError::RuntimeError(e.to_string()))?
+            .name()
+            .clone();
         let arrays: Vec<ArrayRef> = args
             .into_iter()
             .map(|d| import_arrow(d).map(|(_, arr)| arr))
             .collect::<DaftResult<Vec<_>>>()?;
 
-        build_point_array(arrays, Dimension::XY, "geo_point2d")
+        build_point_array(arrays, Dimension::XY, &output_name)
     }
 }
 
@@ -143,7 +148,7 @@ impl DaftScalarFunction for GeoPoint3D {
         validate_numeric(&f0, "x")?;
         validate_numeric(&f1, "y")?;
         validate_numeric(&f2, "z")?;
-        GeoPointArray::output_schema("geo_point3d", Dimension::XYZ)
+        GeoPointArray::output_schema(f0.name(), Dimension::XYZ)
     }
 
     fn call(&self, args: Vec<ArrowData>) -> DaftResult<ArrowData> {
@@ -153,11 +158,15 @@ impl DaftScalarFunction for GeoPoint3D {
                 args.len()
             )));
         }
+        let output_name = Field::try_from(&args[0].schema)
+            .map_err(|e| DaftError::RuntimeError(e.to_string()))?
+            .name()
+            .clone();
         let arrays: Vec<ArrayRef> = args
             .into_iter()
             .map(|d| import_arrow(d).map(|(_, arr)| arr))
             .collect::<DaftResult<Vec<_>>>()?;
 
-        build_point_array(arrays, Dimension::XYZ, "geo_point3d")
+        build_point_array(arrays, Dimension::XYZ, &output_name)
     }
 }
