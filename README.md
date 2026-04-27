@@ -5,14 +5,14 @@ Geospatial extension for [Daft](https://github.com/Eventual-Inc/Daft), built wit
 ## Installation
 
 ```bash
-pip install daft-geo
+uv add daft-geo
 ```
 
 ## Development
 
 ```bash
 # Install in development mode
-pip install -e ".[test]"
+uv sync --extra test
 
 # Run tests
 pytest tests/

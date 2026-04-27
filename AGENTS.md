@@ -52,7 +52,7 @@ The `types.rs` module provides `to_array()` and `from_array()` helpers that conv
 
 ```bash
 # Install in dev mode (builds Rust + installs Python package)
-uv pip install -e ".[test]" --python /path/to/.venv/bin/python
+uv sync --extra test
 
 # Or build Rust only
 cargo build --release
