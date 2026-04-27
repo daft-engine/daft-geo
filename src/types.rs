@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use arrow::{
-    array::{ArrayRef, FixedSizeListArray, make_array},
+    array::{ArrayRef, make_array},
     datatypes::{DataType, Field},
     ffi::{FFI_ArrowArray, FFI_ArrowSchema, from_ffi, to_ffi},
 };
@@ -27,13 +27,6 @@ impl GeoPointArray {
     pub fn into_ffi(self, name: &str) -> DaftResult<ArrowData> {
         let field = self.0.extension_type().to_field(name, true);
         export_arrow(&field, self.0.into_arrow())
-    }
-
-    pub fn from_fixed_size_list(fsl: FixedSizeListArray, dim: Dimension) -> DaftResult<Self> {
-        let arr: ArrayRef = Arc::new(fsl);
-        let pa = PointArray::try_from((arr.as_ref(), Self::geo_type(dim)))
-            .map_err(|e| DaftError::RuntimeError(e.to_string()))?;
-        Ok(Self(pa))
     }
 
     pub fn dimension_of_schema(schema: &ArrowSchema) -> DaftResult<Dimension> {

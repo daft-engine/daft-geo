@@ -85,10 +85,14 @@ def test_haversine_sf_to_la(sess):
     """Haversine distance between SF and LA should be ~559 km."""
     from daft_geo import haversine, point2d
 
-    df = daft.from_pydict({
-        "lat1": [37.7749], "lon1": [-122.4194],
-        "lat2": [34.0522], "lon2": [-118.2437],
-    })
+    df = daft.from_pydict(
+        {
+            "lat1": [37.7749],
+            "lon1": [-122.4194],
+            "lat2": [34.0522],
+            "lon2": [-118.2437],
+        }
+    )
     with sess:
         result = (
             df.with_column("p1", point2d(col("lat1"), col("lon1")))
@@ -105,10 +109,16 @@ def test_point3d_distance(sess):
     """3D Euclidean distance: (0,0,0) to (1,1,1) = sqrt(3)."""
     from daft_geo import distance, point3d
 
-    df = daft.from_pydict({
-        "x1": [0.0], "y1": [0.0], "z1": [0.0],
-        "x2": [1.0], "y2": [1.0], "z2": [1.0],
-    })
+    df = daft.from_pydict(
+        {
+            "x1": [0.0],
+            "y1": [0.0],
+            "z1": [0.0],
+            "x2": [1.0],
+            "y2": [1.0],
+            "z2": [1.0],
+        }
+    )
     with sess:
         result = (
             df.with_column("p1", point3d(col("x1"), col("y1"), col("z1")))
@@ -145,7 +155,7 @@ def test_point3d_dtype(sess):
 
 def test_function_not_available_without_extension():
     """Functions should not be available without loading the extension."""
-    from daft_geo import distance, point2d
+    from daft_geo import point2d
 
     sess = Session()
     with sess:

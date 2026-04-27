@@ -1,16 +1,14 @@
 use std::{ffi::CStr, sync::Arc};
 
 use arrow::{
-    array::{
-        Array, ArrayRef, BooleanBufferBuilder, FixedSizeListArray, Float64Array, cast::AsArray,
-        types::Float64Type,
-    },
-    buffer::NullBuffer,
+    array::{Array, ArrayRef, Float64Array, cast::AsArray, types::Float64Type},
+    buffer::{NullBuffer, ScalarBuffer},
     compute::cast,
     datatypes::{DataType, Field},
 };
 use daft_ext::prelude::*;
-use geoarrow_schema::Dimension;
+use geoarrow_array::array::{InterleavedCoordBuffer, PointArray};
+use geoarrow_schema::{Dimension, Metadata};
 
 use crate::types::{GeoPointArray, import_arrow};
 
@@ -35,7 +33,7 @@ fn validate_numeric(field: &Field, arg_name: &str) -> DaftResult<()> {
 
 fn cast_to_f64(array: &ArrayRef) -> DaftResult<Float64Array> {
     if *array.data_type() == DataType::Float64 {
-        return Ok(array.clone().as_primitive().clone());
+        return Ok(array.as_primitive::<Float64Type>().clone());
     }
     Ok(cast(array, &DataType::Float64)
         .map_err(|e| DaftError::RuntimeError(e.to_string()))?
@@ -49,41 +47,29 @@ fn build_point_array(
     output_name: &str,
 ) -> DaftResult<ArrowData> {
     let len = arrays[0].len();
-    let dims = dim.size() as i32;
     let f64_arrays: Vec<Float64Array> = arrays
         .iter()
         .map(cast_to_f64)
         .collect::<DaftResult<Vec<_>>>()?;
 
-    let mut values = Vec::with_capacity(len * dims as usize);
-    let mut null_count = 0;
-    let mut validity = BooleanBufferBuilder::new(len);
-
+    let mut coords = Vec::with_capacity(len * dim.size());
     for row in 0..len {
-        let any_null = f64_arrays.iter().any(|a| a.is_null(row));
-        if any_null {
-            values.extend(std::iter::repeat_n(0.0, dims as usize));
-            validity.append(false);
-            null_count += 1;
-        } else {
-            for arr in &f64_arrays {
-                values.push(arr.value(row));
-            }
-            validity.append(true);
+        for arr in &f64_arrays {
+            coords.push(arr.value(row));
         }
     }
 
-    let values_array = Arc::new(Float64Array::from(values)) as ArrayRef;
-    let inner_field = Arc::new(Field::new("xy", DataType::Float64, false));
-    let nulls = if null_count > 0 {
-        Some(NullBuffer::from(validity.finish()))
-    } else {
-        None
-    };
-    let fsl = FixedSizeListArray::try_new(inner_field, dims, values_array, nulls)
-        .map_err(|e| DaftError::RuntimeError(e.to_string()))?;
+    let coord_buffer = InterleavedCoordBuffer::new(ScalarBuffer::from(coords), dim);
 
-    GeoPointArray::from_fixed_size_list(fsl, dim)?.into_ffi(output_name)
+    let validity = f64_arrays
+        .iter()
+        .filter_map(|a| a.nulls())
+        .map(|n| n.inner().clone())
+        .reduce(|a, b| &a & &b)
+        .map(NullBuffer::new);
+
+    let point_array = PointArray::new(coord_buffer.into(), validity, Arc::new(Metadata::default()));
+    GeoPointArray(point_array).into_ffi(output_name)
 }
 
 pub struct GeoPoint2D;
